@@ -3,7 +3,10 @@
 Interactive AWS SSO credential manager with CLI and web UI.
 
 [![CI](https://github.com/tux86/ssomatic/actions/workflows/ci.yml/badge.svg)](https://github.com/tux86/ssomatic/actions/workflows/ci.yml)
+[![Release](https://github.com/tux86/ssomatic/actions/workflows/release.yml/badge.svg)](https://github.com/tux86/ssomatic/actions/workflows/release.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/tux86/ssomatic)](https://github.com/tux86/ssomatic/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/tux86/ssomatic)](https://github.com/tux86/ssomatic)
 [![Bun](https://img.shields.io/badge/Bun-%23000000.svg?logo=bun&logoColor=white)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
