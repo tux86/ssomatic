@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/tux86/ssomatic/compare/v1.1.0...v1.1.1) (2026-03-26)
+
+### Bug Fixes
+
+* handle port-in-use gracefully instead of crashing ([237aacd](https://github.com/tux86/ssomatic/commit/237aacd1b4ab314dfb8d5b7533efeecf16fdd214))
+
 ## [1.1.0](https://github.com/tux86/ssomatic/compare/v1.0.1...v1.1.0) (2026-03-26)
 
 ### Features
