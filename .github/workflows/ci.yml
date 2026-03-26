@@ -34,7 +34,6 @@ jobs:
       - name: Verify output
         run: |
           test -f dist/ssomatic
-          test -f dist/web/index.html
           ls -lh dist/ssomatic
 
       - name: Validate commitlint config

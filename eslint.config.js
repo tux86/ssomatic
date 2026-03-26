@@ -64,6 +64,6 @@ export default [
     },
   },
   {
-    ignores: ["node_modules", "dist", "*.config.js", "*.config.ts"],
+    ignores: ["node_modules", "dist", "*.config.js", "*.config.ts", "**/*.generated.ts"],
   },
 ];

@@ -18,7 +18,7 @@ import {
   type AppSettings,
 } from "../aws/sso.js";
 import { VERSION, checkForUpdate } from "../version.js";
-import path from "path";
+import { ASSETS } from "./assets.generated.js";
 
 const DEFAULT_PORT = 9876;
 
@@ -81,8 +81,6 @@ const methods: Record<string, (...args: unknown[]) => Promise<unknown>> = {
   },
 };
 
-const DIST_DIR = path.join(import.meta.dir, "../../dist/web");
-
 let server: ReturnType<typeof Bun.serve> | null = null;
 
 export function startServer(port?: number): string | null {
@@ -116,13 +114,13 @@ export function startServer(port?: number): string | null {
         }
       }
 
-      // Serve static files from dist/web/
-      const filePath = url.pathname === "/" ? "/index.html" : url.pathname;
-      const file = Bun.file(path.join(DIST_DIR, filePath));
-      if (await file.exists()) return new Response(file);
-      // SPA fallback
-      const index = Bun.file(path.join(DIST_DIR, "index.html"));
-      if (await index.exists()) return new Response(index);
+      // Serve embedded web assets
+      const asset = ASSETS.get(url.pathname) ?? ASSETS.get("/");
+      if (asset) {
+        return new Response(asset.content, {
+          headers: { "Content-Type": asset.contentType },
+        });
+      }
 
       return new Response("Not Found", { status: 404 });
     },

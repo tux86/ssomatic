@@ -969,7 +969,7 @@ function SSOmatic() {
         {updateAvailable && (
           <Box>
             <Text color="yellow">
-              Update available: v{updateAvailable} (current: v{VERSION}) — brew upgrade ssomatic
+              Update available: v{updateAvailable} (current: v{VERSION}) — github.com/tux86/ssomatic/releases
             </Text>
           </Box>
         )}
@@ -981,5 +981,10 @@ function SSOmatic() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Entry Point
 // ─────────────────────────────────────────────────────────────────────────────
+
+if (process.argv.includes("--version") || process.argv.includes("-v")) {
+  console.log(`ssomatic v${VERSION}`);
+  process.exit(0);
+}
 
 renderApp(<SSOmatic />);

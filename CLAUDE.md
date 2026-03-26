@@ -29,8 +29,7 @@ ssomatic/
 │           ├── hooks/
 │           └── lib/api.ts     # RPC client
 ├── dist/                      # Build output
-│   ├── ssomatic               # Compiled CLI binary
-│   └── web/                   # Vite build output
+│   └── ssomatic               # Compiled CLI binary (web assets embedded)
 ├── docs/screenshots/          # Demo GIFs for README
 ├── .releaserc.json            # semantic-release config
 ├── package.json

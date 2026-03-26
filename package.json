@@ -12,9 +12,10 @@
   "author": "tux86",
   "homepage": "https://github.com/tux86/ssomatic",
   "scripts": {
+    "prestart": "test -f src/web/assets.generated.ts || echo 'export const ASSETS = new Map();' > src/web/assets.generated.ts",
     "start": "bun run src/cli/index.tsx",
-    "dev": "bun run --watch src/cli/index.tsx",
-    "build": "vite build && bun build --compile src/cli/index.tsx --outfile dist/ssomatic",
+    "dev": "bun run prestart && bun run --watch src/cli/index.tsx",
+    "build": "vite build && bun run scripts/embed-assets.ts && rm -rf dist/web && bun build --compile src/cli/index.tsx --outfile dist/ssomatic",
     "lint": "eslint src",
     "prepare": "husky"
   },

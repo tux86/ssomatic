@@ -57,6 +57,7 @@ out/
 .bun-build/
 .output/
 *.tsbuildinfo
+*.generated.ts
 
 # Cache
 .cache/

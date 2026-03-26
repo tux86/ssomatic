@@ -105,7 +105,7 @@ ssomatic/
 │   └── web/
 │       ├── server.ts   # Bun HTTP server + RPC bridge
 │       └── client/     # Web UI SPA (React/Vite/Tailwind)
-├── dist/              # Build output (binary + web assets)
+├── dist/              # Build output (single binary, web assets embedded)
 └── package.json
 ```
 
