@@ -4,6 +4,11 @@
   "description": "Electron desktop app for Awsume",
   "type": "module",
   "license": "MIT",
+  "author": {
+    "name": "tux86",
+    "email": "tux86@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/tux86/awsume",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "bun run build:electron && concurrently \"bun run dev:vite\" \"bun run dev:electron\"",
