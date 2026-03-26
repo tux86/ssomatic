@@ -1,3 +1,9 @@
+## [1.2.3](https://github.com/tux86/ssomatic/compare/v1.2.2...v1.2.3) (2026-03-26)
+
+### Bug Fixes
+
+* **ci:** checkout release tag for builds, use npx semantic-release like presto ([076e21c](https://github.com/tux86/ssomatic/commit/076e21c6291533c226cc03d0044729cf9e34f65b))
+
 ## [1.2.2](https://github.com/tux86/ssomatic/compare/v1.2.1...v1.2.2) (2026-03-26)
 
 ### Bug Fixes
