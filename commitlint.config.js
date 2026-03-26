@@ -25,6 +25,7 @@ export default {
         'core',
         'cli',
         'gui',
+        'ci',
         'deps',
       ],
     ],
