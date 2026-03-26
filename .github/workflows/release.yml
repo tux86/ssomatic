@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build
+        run: bun run build
+
+      - name: Create Release Pull Request or Tag
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          title: "chore: release"
+          commit: "chore: release"
+          publish: bunx changeset tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Tags
+        if: steps.changesets.outputs.published == 'true'
+        run: git push --follow-tags
+
+      - name: Create GitHub Releases with Binaries
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          for pkg in $(echo "$PUBLISHED_PACKAGES" | jq -r '.[] | @base64'); do
+            version=$(echo "$pkg" | base64 -d | jq -r '.version')
+            tag="ssomatic@${version}"
+
+            echo "Processing release for $tag"
+
+            if gh release view "$tag" > /dev/null 2>&1; then
+              gh release upload "$tag" dist/ssomatic --clobber
+            else
+              gh release create "$tag" dist/ssomatic --generate-notes --title "$tag"
+            fi
+          done

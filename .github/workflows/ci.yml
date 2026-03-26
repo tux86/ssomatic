@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Syntax check
+        run: bun -e "import './src/cli/index.tsx'"
+
+      - name: Build
+        run: bun run build
+
+      - name: Verify output
+        run: |
+          test -f dist/ssomatic
+          test -f dist/web/index.html
+          ls -lh dist/ssomatic
+
+      - name: Validate commitlint config
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bunx commitlint --from="$BASE_SHA" --to="$HEAD_SHA" --verbose || true
