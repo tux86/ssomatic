@@ -9,16 +9,6 @@ Interactive AWS SSO credential manager with CLI and web UI.
 
 ---
 
-## Features
-
-- **Auto-discovery** — Scans `~/.aws/config` for SSO profiles (legacy and sso_session)
-- **Status dashboard** — View credential validity with expiry countdown
-- **Multi-select refresh** — Refresh multiple profiles at once with SSO device auth
-- **Auto-refresh daemon** — Background process to keep credentials fresh
-- **Built-in web UI** — Toggle a web server from the CLI with `w` for a browser-based dashboard
-- **Desktop notifications** — Alerts when credentials expire (macOS/Linux)
-- **Persistent settings** — Notifications, favorites, web server, port — all saved across sessions
-
 ## Demo
 
 ### CLI
@@ -32,6 +22,16 @@ Interactive AWS SSO credential manager with CLI and web UI.
 <p align="center">
   <img src="docs/screenshots/web-demo.gif" alt="SSOmatic Web UI Demo" width="720">
 </p>
+
+## Features
+
+- **Auto-discovery** — Scans `~/.aws/config` for SSO profiles (legacy and sso_session)
+- **Status dashboard** — View credential validity with expiry countdown
+- **Multi-select refresh** — Refresh multiple profiles at once with SSO device auth
+- **Auto-refresh daemon** — Background process to keep credentials fresh
+- **Built-in web UI** — Toggle a web server from the CLI with `w` for a browser-based dashboard
+- **Desktop notifications** — Alerts when credentials expire (macOS/Linux)
+- **Persistent settings** — Notifications, favorites, web server, port — all saved across sessions
 
 ## Prerequisites
 
