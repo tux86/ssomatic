@@ -7,6 +7,7 @@ export interface AppProps {
   icon?: string;
   color?: string;
   actions?: ActionItem[];
+  statusItems?: React.ReactNode[];
   children: React.ReactNode;
   onQuit?: () => void;
 }
@@ -16,6 +17,7 @@ export function App({
   icon = "▲",
   color = "cyan",
   actions,
+  statusItems,
   children,
   onQuit,
 }: AppProps) {
@@ -43,9 +45,21 @@ export function App({
         {children}
       </Box>
 
-      {/* Action Bar */}
-      {actions && actions.length > 0 && (
+      {/* Status bar */}
+      {statusItems && statusItems.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
+          <Box borderStyle="single" borderTop borderBottom={false} borderLeft={false} borderRight={false} borderColor="gray" />
+          <Box gap={2}>
+            {statusItems.map((item, i) => (
+              <React.Fragment key={i}>{item}</React.Fragment>
+            ))}
+          </Box>
+        </Box>
+      )}
+
+      {/* Action bar */}
+      {actions && actions.length > 0 && (
+        <Box flexDirection="column" marginTop={statusItems ? 0 : 1}>
           <Box borderStyle="single" borderTop borderBottom={false} borderLeft={false} borderRight={false} borderColor="gray" />
           <ActionBar actions={actions} />
         </Box>

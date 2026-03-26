@@ -929,12 +929,30 @@ function SSOmatic() {
     }
   };
 
+  const statusItems = [
+    webUrl ? (
+      <Text key="web">
+        <Text color="green">●</Text>
+        <Text dimColor> Web </Text>
+        <Text color="cyan">{webUrl}</Text>
+      </Text>
+    ) : (
+      <Text key="web" dimColor>○ Web off</Text>
+    ),
+    ...(updateAvailable ? [
+      <Text key="update" color="yellow">
+        ↑ v{updateAvailable} available
+      </Text>
+    ] : []),
+  ];
+
   return (
     <App
       title={`SSOmatic v${VERSION}`}
       icon="🔐"
       color="cyan"
       actions={getActions()}
+      statusItems={statusItems}
       onQuit={() => exit()}
     >
       {/* Profile count banner */}
@@ -949,31 +967,6 @@ function SSOmatic() {
       )}
 
       {renderView()}
-
-      {/* Status footer */}
-      <Box marginTop={1} flexDirection="column">
-        <Box>
-          {webUrl ? (
-            <Text>
-              <Text color="green">●</Text>
-              <Text dimColor> Web UI: </Text>
-              <Text color="cyan">{webUrl}</Text>
-            </Text>
-          ) : (
-            <Text dimColor>
-              <Text color="gray">○</Text>
-              {" Web UI: off"}
-            </Text>
-          )}
-        </Box>
-        {updateAvailable && (
-          <Box>
-            <Text color="yellow">
-              Update available: v{updateAvailable} (current: v{VERSION}) — github.com/tux86/ssomatic/releases
-            </Text>
-          </Box>
-        )}
-      </Box>
     </App>
   );
 }
