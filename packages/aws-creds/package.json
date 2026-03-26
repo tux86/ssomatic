@@ -1,7 +1,13 @@
 {
   "name": "@toolbox/aws-creds",
   "version": "3.1.0",
+  "description": "Interactive TUI for managing AWS SSO credentials",
   "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./core": "./src/core.ts"
+  },
   "bin": {
     "aws-creds": "./src/index.tsx"
   },
