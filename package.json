@@ -1,6 +1,6 @@
 {
   "name": "ssomatic",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "SSOmatic — Auto-discover, refresh, and manage your AWS SSO credentials from the terminal or browser. Built with Bun, React, and TypeScript.",
   "private": true,
   "type": "module",

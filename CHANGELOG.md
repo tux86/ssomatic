@@ -1,3 +1,9 @@
+## [1.2.2](https://github.com/tux86/ssomatic/compare/v1.2.1...v1.2.2) (2026-03-26)
+
+### Bug Fixes
+
+* **ci:** build binaries after version bump so version matches release ([1f15fd3](https://github.com/tux86/ssomatic/commit/1f15fd35d25091f351193bdd61727299949a7d0b))
+
 ## [1.2.1](https://github.com/tux86/ssomatic/compare/v1.2.0...v1.2.1) (2026-03-26)
 
 ### Bug Fixes
