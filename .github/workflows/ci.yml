@@ -28,7 +28,7 @@ jobs:
       - name: Syntax check
         run: |
           bun -e "import './packages/core/src/index.ts'"
-          bun -e "import './packages/cli/src/index.tsx'" 2>/dev/null || true
+          bun -e "import './packages/cli/src/index.tsx'"
 
       - name: Build binary
         run: bun run build
