@@ -7,7 +7,7 @@ export interface ListItemData {
   label: string;
   description?: string;
   hint?: string;
-  value: any;
+  value: unknown;
 }
 
 export interface ListAction {

@@ -5,7 +5,7 @@ export interface MultiSelectItemData {
   id: string;
   label: string;
   hint?: string;
-  value: any;
+  value: unknown;
 }
 
 export interface MultiSelectListProps {
