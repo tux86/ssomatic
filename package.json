@@ -1,7 +1,7 @@
 {
   "name": "awssesh",
-  "version": "2.0.0",
-  "description": "AWS SSO credential manager \u2014 a fast terminal dashboard that keeps your pinned profiles' credentials fresh (expiry-aware), with one-keystroke copy, console open, and env export.",
+  "version": "2.1.0",
+  "description": "AWS SSO credential manager — a fast terminal dashboard that keeps your pinned profiles' credentials fresh (expiry-aware), with one-keystroke copy, console open, and env export.",
   "keywords": [
     "aws",
     "sso",
