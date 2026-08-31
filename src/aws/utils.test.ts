@@ -1,12 +1,19 @@
 import { test, expect } from "bun:test";
-import { formatJson } from "./utils.ts";
+import { clipboardTools } from "./utils.ts";
 
-test("formatJson pretty-prints valid JSON", () => {
-  expect(formatJson('{"a":1,"b":[2,3]}')).toBe(
-    JSON.stringify({ a: 1, b: [2, 3] }, null, 2),
-  );
+test("clipboardTools prefers wl-copy under Wayland and xclip under X11", () => {
+  const wayland = clipboardTools("linux", { WAYLAND_DISPLAY: "wayland-0" } as NodeJS.ProcessEnv);
+  expect(wayland[0]!.cmd).toBe("wl-copy");
+
+  const x11 = clipboardTools("linux", { DISPLAY: ":0" } as NodeJS.ProcessEnv);
+  expect(x11[0]!.cmd).toBe("xclip");
+
+  // Both stacks stay available as fallbacks, plus WSL's clip.exe.
+  const names = x11.map((t) => t.cmd);
+  expect(names).toEqual(["xclip", "xsel", "wl-copy", "clip.exe"]);
 });
 
-test("formatJson returns input unchanged when not JSON", () => {
-  expect(formatJson("not json")).toBe("not json");
+test("clipboardTools uses the native tool on macOS and Windows", () => {
+  expect(clipboardTools("darwin", {} as NodeJS.ProcessEnv)).toEqual([{ cmd: "pbcopy", args: [] }]);
+  expect(clipboardTools("win32", {} as NodeJS.ProcessEnv)).toEqual([{ cmd: "clip", args: [] }]);
 });

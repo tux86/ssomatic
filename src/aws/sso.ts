@@ -10,7 +10,8 @@ import {
   CreateTokenCommand,
 } from "@aws-sdk/client-sso-oidc";
 import { SSOClient, GetRoleCredentialsCommand } from "@aws-sdk/client-sso";
-import { parse as parseIni, stringify as stringifyIni } from "ini";
+import { parse as parseIni } from "ini";
+import { parseCredentials, upsertProfile } from "./credentialsFile.js";
 import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -28,14 +29,6 @@ export interface SSOProfile {
   ssoRegion: string;
   region?: string;
   ssoSession?: string;
-}
-
-export type CredentialStatus = "valid" | "expired" | "error" | "unknown";
-
-export interface ProfileStatus {
-  profile: SSOProfile;
-  status: CredentialStatus;
-  expiresAt?: Date;
 }
 
 export interface AWSCredentials {
@@ -72,11 +65,27 @@ interface ParsedConfig {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const HOME = process.env.HOME || process.env.USERPROFILE || "";
-export const AWS_DIR = `${HOME}/.aws`;
-export const CONFIG_PATH = `${AWS_DIR}/config`;
-export const CREDENTIALS_PATH = `${AWS_DIR}/credentials`;
-export const SSO_CACHE_DIR = `${AWS_DIR}/sso/cache`;
+/**
+ * AWS config locations, resolved per call rather than captured at import time.
+ * Reading `HOME` once at module load froze the paths for the life of the
+ * process, which silently ignored a later `HOME` change (and made the module
+ * impossible to sandbox in tests).
+ */
+export function homeDir(): string {
+  return process.env.HOME || process.env.USERPROFILE || "";
+}
+export function awsDir(): string {
+  return `${homeDir()}/.aws`;
+}
+export function configPath(): string {
+  return `${awsDir()}/config`;
+}
+export function credentialsPath(): string {
+  return `${awsDir()}/credentials`;
+}
+export function ssoCacheDir(): string {
+  return `${awsDir()}/sso/cache`;
+}
 
 /**
  * Demo recording mode. When `AWSSESH_DEMO` is set, the interactive SSO network
@@ -99,17 +108,32 @@ export async function parseIniFile(path: string): Promise<ParsedConfig> {
   }
 }
 
-export async function writeCredentials(profileName: string, credentials: AWSCredentials): Promise<void> {
-  const existing = await parseIniFile(CREDENTIALS_PATH);
+/**
+ * Key used to persist when the role credentials stop working.
+ *
+ * The AWS parsers ignore keys they do not recognise, and `x_security_token_expires`
+ * is the de-facto name other SSO helpers (aws-vault, granted) already use for
+ * exactly this. Without it awssesh had no way to tell live credentials from
+ * hour-old dead ones, so it happily copied expired keys to the clipboard and
+ * reported success.
+ */
+export const EXPIRY_KEY = "x_security_token_expires";
 
-  existing[profileName] = {
+export async function writeCredentials(profileName: string, credentials: AWSCredentials): Promise<void> {
+  const existing = await readFile(credentialsPath(), "utf8").catch(() => "");
+
+  const next = upsertProfile(existing, profileName, {
     aws_access_key_id: credentials.accessKeyId,
     aws_secret_access_key: credentials.secretAccessKey,
     ...(credentials.sessionToken && { aws_session_token: credentials.sessionToken }),
-  };
+    ...(credentials.expiration && { [EXPIRY_KEY]: credentials.expiration.toISOString() }),
+  });
 
-  await mkdir(AWS_DIR, { recursive: true });
-  await writeFile(CREDENTIALS_PATH, stringifyIni(existing));
+  await mkdir(awsDir(), { recursive: true });
+  await writeFile(credentialsPath(), next, { mode: 0o600 });
+  // `mode` only applies when the file is created, so enforce it on every write:
+  // these are live session credentials and must not be world-readable.
+  await chmod(credentialsPath(), 0o600).catch(() => {});
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,7 +149,7 @@ export async function findCachedToken(profile: SSOProfile): Promise<CachedToken 
   try {
     const cacheKey = profile.ssoSession ?? profile.ssoStartUrl;
     const hash = createHash("sha1").update(cacheKey).digest("hex");
-    const cacheFile = `${SSO_CACHE_DIR}/${hash}.json`;
+    const cacheFile = `${ssoCacheDir()}/${hash}.json`;
 
     const content = JSON.parse(await readFile(cacheFile, "utf8"));
     if (content.accessToken && content.expiresAt) {
@@ -145,7 +169,7 @@ export async function findCachedToken(profile: SSOProfile): Promise<CachedToken 
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function discoverProfiles(): Promise<SSOProfile[]> {
-  const config = await parseIniFile(CONFIG_PATH);
+  const config = await parseIniFile(configPath());
   const profiles: SSOProfile[] = [];
   const ssoSessions: Map<string, ConfigSection> = new Map();
 
@@ -188,19 +212,7 @@ export async function discoverProfiles(): Promise<SSOProfile[]> {
   return profiles;
 }
 
-export async function checkTokenStatus(profile: SSOProfile): Promise<ProfileStatus> {
-  const cachedToken = await findCachedToken(profile);
 
-  if (!cachedToken || cachedToken.expiresAt <= new Date()) {
-    return { profile, status: "expired" };
-  }
-
-  return { profile, status: "valid", expiresAt: cachedToken.expiresAt };
-}
-
-export async function checkAllProfiles(profiles: SSOProfile[]): Promise<ProfileStatus[]> {
-  return Promise.all(profiles.map((profile) => checkTokenStatus(profile)));
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SSO OIDC Device Authorization Flow
@@ -208,8 +220,11 @@ export async function checkAllProfiles(profiles: SSOProfile[]): Promise<ProfileS
 
 export async function startDeviceAuthorization(profile: SSOProfile): Promise<DeviceAuthInfo | null> {
   if (DEMO) {
+    // Mirror the shape AWS actually returns for `verificationUriComplete` —
+    // a long portal URL with the code embedded — so the demo exercises the
+    // same wrapping the real login screen has to survive.
     return {
-      verificationUri: `https://device.sso.${profile.ssoRegion}.amazonaws.com/`,
+      verificationUri: `${profile.ssoStartUrl.replace(/\/$/, "")}/#/device?user_code=BRWS-DEMO`,
       userCode: "BRWS-DEMO",
       deviceCode: "demo-device-code",
       clientId: "demo-client",
@@ -260,11 +275,11 @@ export async function startDeviceAuthorization(profile: SSOProfile): Promise<Dev
 
 export async function saveSSOTokenToCache(profile: SSOProfile, tokenInfo: TokenInfo): Promise<void> {
   try {
-    await mkdir(SSO_CACHE_DIR, { recursive: true });
+    await mkdir(ssoCacheDir(), { recursive: true });
 
     const cacheKey = profile.ssoSession ?? profile.ssoStartUrl;
     const hash = createHash("sha1").update(cacheKey).digest("hex");
-    const cacheFile = `${SSO_CACHE_DIR}/${hash}.json`;
+    const cacheFile = `${ssoCacheDir()}/${hash}.json`;
 
     const cacheData = {
       startUrl: profile.ssoStartUrl,
@@ -328,10 +343,43 @@ export async function pollForToken(
   return null;
 }
 
+/**
+ * Why a credential fetch failed. `expired-token` is the only outcome that an
+ * interactive browser login can actually fix — the rest used to be lumped in
+ * with it, so a network blip or a missing role grant told the user "needs
+ * login" and marched them through a pointless SSO flow that then failed again.
+ */
+export type CredentialsFailure = "expired-token" | "denied" | "unavailable";
+
+export interface CredentialsResult {
+  credentials?: AWSCredentials;
+  failure?: CredentialsFailure;
+  error?: string;
+}
+
+/** AWS SSO error names that genuinely mean "your cached token is no longer good". */
+const TOKEN_ERRORS = new Set(["UnauthorizedException", "ExpiredTokenException", "AccessDeniedException"]);
+/** Errors about the role/account, not the token — logging in again changes nothing. */
+const ACCESS_ERRORS = new Set(["ForbiddenException", "ResourceNotFoundException"]);
+
+/** Classify a GetRoleCredentials failure. Pure, so the routing is unit-testable. */
+export function classifyCredentialsError(error: unknown, profile: SSOProfile): CredentialsResult {
+  const name = error instanceof Error ? error.name : "";
+  const message = error instanceof Error ? error.message : String(error);
+  if (TOKEN_ERRORS.has(name)) return { failure: "expired-token", error: message };
+  if (ACCESS_ERRORS.has(name)) {
+    return {
+      failure: "denied",
+      error: `no access to ${profile.ssoRoleName} in ${profile.ssoAccountId}`,
+    };
+  }
+  return { failure: "unavailable", error: message || "could not reach AWS SSO" };
+}
+
 export async function getCredentialsWithToken(
   profile: SSOProfile,
   accessToken: string
-): Promise<AWSCredentials | null> {
+): Promise<CredentialsResult> {
   try {
     const client = new SSOClient({ region: profile.ssoRegion });
     const response = await client.send(
@@ -342,20 +390,21 @@ export async function getCredentialsWithToken(
       })
     );
 
-    if (!response.roleCredentials) {
-      return null;
+    const role = response.roleCredentials;
+    if (!role?.accessKeyId || !role.secretAccessKey) {
+      return { failure: "unavailable", error: "AWS returned no role credentials" };
     }
 
     return {
-      accessKeyId: response.roleCredentials.accessKeyId!,
-      secretAccessKey: response.roleCredentials.secretAccessKey!,
-      sessionToken: response.roleCredentials.sessionToken,
-      expiration: response.roleCredentials.expiration
-        ? new Date(response.roleCredentials.expiration)
-        : undefined,
+      credentials: {
+        accessKeyId: role.accessKeyId,
+        secretAccessKey: role.secretAccessKey,
+        sessionToken: role.sessionToken,
+        expiration: role.expiration ? new Date(role.expiration) : undefined,
+      },
     };
-  } catch {
-    return null;
+  } catch (error) {
+    return classifyCredentialsError(error, profile);
   }
 }
 
@@ -375,11 +424,11 @@ export async function performSSOLoginFlow(
 
   await saveSSOTokenToCache(profile, tokenInfo);
 
-  const creds = await getCredentialsWithToken(profile, tokenInfo.accessToken);
-  if (!creds) {
-    return { success: false, error: "Failed to get credentials" };
+  const result = await getCredentialsWithToken(profile, tokenInfo.accessToken);
+  if (!result.credentials) {
+    return { success: false, error: result.error ?? "Failed to get credentials" };
   }
-  await writeCredentials(profile.name, creds);
+  await writeCredentials(profile.name, result.credentials);
   return { success: true };
 }
 
@@ -397,31 +446,56 @@ export async function refreshProfile(
     return { success: true, expiresAt: new Date(Date.now() + 50 * 60 * 1000) };
   }
 
-  const credentials = await getCredentialsWithToken(profile, cachedToken.accessToken);
-  if (!credentials) {
-    return { success: false, needsLogin: true };
+  const result = await getCredentialsWithToken(profile, cachedToken.accessToken);
+  if (!result.credentials) {
+    // Only an actually-rejected token warrants sending the user to a browser.
+    if (result.failure === "expired-token") return { success: false, needsLogin: true };
+    return { success: false, error: result.error ?? "could not fetch credentials" };
   }
 
-  await writeCredentials(profile.name, credentials);
-  return { success: true, expiresAt: credentials.expiration };
+  await writeCredentials(profile.name, result.credentials);
+  return { success: true, expiresAt: result.credentials.expiration };
 }
 
-export function readProfileCredentials(
-  profileName: string
-): { accessKeyId: string; secretAccessKey: string; sessionToken: string } | null {
+export interface StoredCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken: string;
+  /** When these credentials stop working, if awssesh wrote them. */
+  expiresAt: Date | null;
+}
+
+export function readProfileCredentials(profileName: string): StoredCredentials | null {
   try {
-    const content = readFileSync(CREDENTIALS_PATH, "utf8");
-    const parsed = parseIni(content) as ParsedConfig;
-    const section = parsed[profileName];
+    const content = readFileSync(credentialsPath(), "utf8");
+    const section = parseCredentials(content)[profileName];
     if (!section) return null;
     const accessKeyId = section.aws_access_key_id;
     const secretAccessKey = section.aws_secret_access_key;
     const sessionToken = section.aws_session_token;
     if (!accessKeyId || !secretAccessKey || !sessionToken) return null;
-    return { accessKeyId, secretAccessKey, sessionToken };
+
+    // Absent for credentials written by an older awssesh or by another tool;
+    // callers treat an unknown expiry as "assume stale and re-fetch".
+    const raw = section[EXPIRY_KEY];
+    const parsed = raw ? new Date(raw) : null;
+    const expiresAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+
+    return { accessKeyId, secretAccessKey, sessionToken, expiresAt };
   } catch {
     return null;
   }
+}
+
+/** Whether stored credentials are usable for at least `leadMs` longer. */
+export function credentialsAreFresh(
+  creds: StoredCredentials | null,
+  leadMs = 60_000,
+  now: number = Date.now(),
+): boolean {
+  if (!creds) return false;
+  if (!creds.expiresAt) return false; // unknown expiry — never trust it
+  return creds.expiresAt.getTime() - now > leadMs;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -432,9 +506,13 @@ export async function sendNotification(title: string, message: string): Promise<
   const os = process.platform;
   try {
     if (os === "darwin") {
+      // Both values are interpolated into an AppleScript string literal, so
+      // backslashes and quotes must be escaped or a profile name containing
+      // either would break (or inject into) the script.
+      const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       spawn("osascript", [
         "-e",
-        `display notification "${message}" with title "${title}"`,
+        `display notification "${esc(message)}" with title "${esc(title)}"`,
       ], { stdio: "ignore" }).on("error", () => {});
     } else if (os === "linux") {
       spawn("notify-send", [title, message], { stdio: "ignore" }).on("error", () => {});
@@ -442,43 +520,4 @@ export async function sendNotification(title: string, message: string): Promise<
   } catch {
     // Silently fail
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Utility Functions
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function formatExpiry(date?: Date): string {
-  if (!date) return "Unknown";
-
-  const now = new Date();
-  const diff = date.getTime() - now.getTime();
-
-  if (diff < 0) return "Expired";
-
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(minutes / 60);
-
-  if (hours > 0) return `${hours}h ${minutes % 60}m`;
-  return `${minutes}m`;
-}
-
-export function getStatusColor(status: CredentialStatus): string {
-  const colors: Record<CredentialStatus, string> = {
-    valid: "green",
-    expired: "red",
-    error: "yellow",
-    unknown: "gray",
-  };
-  return colors[status];
-}
-
-export function sortByFavorites<T>(items: T[], favorites: string[], getName: (item: T) => string): T[] {
-  return [...items].sort((a, b) => {
-    const aFav = favorites.includes(getName(a));
-    const bFav = favorites.includes(getName(b));
-    if (aFav && !bFav) return -1;
-    if (!aFav && bFav) return 1;
-    return getName(a).localeCompare(getName(b));
-  });
 }

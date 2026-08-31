@@ -48,3 +48,25 @@ test("loadSettings ignores unknown fields including autoStartDaemon", async () =
   expect(s.favoriteProfiles).toEqual(["y"]);
   expect("autoStartDaemon" in s).toBe(false);
 });
+
+test("refreshLeadMinutes is clamped to a range that cannot cause a refresh loop", async () => {
+  const { normalizeSettings, LEAD_MINUTES_MAX, LEAD_MINUTES_MIN } = await import("./settings");
+  expect(normalizeSettings({ refreshLeadMinutes: 9999 }).refreshLeadMinutes).toBe(LEAD_MINUTES_MAX);
+  expect(normalizeSettings({ refreshLeadMinutes: 0 }).refreshLeadMinutes).toBe(LEAD_MINUTES_MIN);
+  expect(normalizeSettings({ refreshLeadMinutes: -5 }).refreshLeadMinutes).toBe(LEAD_MINUTES_MIN);
+  expect(normalizeSettings({ refreshLeadMinutes: Number.NaN }).refreshLeadMinutes).toBe(5);
+});
+
+test("a corrupted favourites list cannot poison name comparisons", async () => {
+  const { normalizeSettings } = await import("./settings");
+  expect(normalizeSettings({ favoriteProfiles: ["a", 7, null, "a"] }).favoriteProfiles).toEqual(["a"]);
+  expect(normalizeSettings({ favoriteProfiles: "nope" }).favoriteProfiles).toEqual([]);
+});
+
+test("loadSettings survives a truncated or non-JSON settings file", async () => {
+  const { loadSettings, DEFAULT_SETTINGS } = await import("./settings");
+  const { writeFileSync, mkdirSync } = await import("node:fs");
+  mkdirSync(join(home, ".aws"), { recursive: true });
+  writeFileSync(join(home, ".aws", "credentials-manager.json"), "{ not json");
+  expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
+});

@@ -65,6 +65,7 @@ While the dashboard is open, ⟳ pinned profiles are refreshed automatically whe
 | `awssesh refresh [name]` | Refresh a profile (or all favorites) now |
 | `awssesh export <name>` | Print `export AWS_*` lines for `eval $(...)` |
 | `awssesh --version` | Print version and exit |
+| `awssesh --help` | Show usage |
 
 **Shell trick — inject credentials into your current shell:**
 
@@ -79,6 +80,7 @@ eval $(awssesh export prod)
 | Key | Action |
 |-----|--------|
 | `↑` / `↓` or `j` / `k` | Move cursor |
+| `g` / `G` | Jump to first / last profile |
 | `Enter` | Open profile details |
 | `r` | Refresh the current profile |
 | `a` | Toggle ⟳ auto-refresh (pin/unpin) |
@@ -87,7 +89,8 @@ eval $(awssesh export prod)
 | `o` | Open AWS console in browser |
 | `/` | Filter profiles by name |
 | `s` | Open settings |
-| `Esc` | Back |
+| `?` | Show all keyboard shortcuts |
+| `Esc` | Back, or clear an active filter |
 | `q` | Quit |
 
 ---
@@ -100,15 +103,26 @@ When an interactive SSO login is needed, a desktop notification is sent (`awsses
 
 ---
 
+## Environment Variables
+
+| Variable | Effect |
+|----------|--------|
+| `AWSSESH_NO_UPDATE_CHECK` | Skip the GitHub release check on startup |
+| `AWSSESH_NO_HYPERLINKS` | Render URLs as plain text instead of clickable OSC 8 links |
+
+---
+
 ## Prerequisites
 
 - [AWS CLI v2](https://aws.amazon.com/cli/) configured with SSO profiles in `~/.aws/config`
+- A clipboard tool for `c` / `y` (`pbcopy`, `wl-copy`, `xclip`, `xsel`, or `clip.exe`). Over SSH,
+  awssesh falls back to OSC 52 so copies land in your *local* clipboard.
 
 ---
 
 ## Development
 
-Requires [Bun](https://bun.sh) >= 1.0.
+Requires [Bun](https://bun.sh) >= 1.4.
 
 ```bash
 git clone https://github.com/tux86/awssesh.git
@@ -120,7 +134,11 @@ bun run dev      # Run with --watch (auto-restart on changes)
 bun run build    # Build the Node CLI bundle (dist/cli.js)
 bun run lint     # Run ESLint
 bun test         # Run unit tests
+bun run typecheck  # Typecheck
 ```
+
+> TypeScript is pinned to 6.x: `typescript-eslint` does not yet support the
+> TypeScript 7 compiler API, so bumping it breaks `bun run lint` in CI.
 
 ---
 

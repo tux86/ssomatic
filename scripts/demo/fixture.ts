@@ -10,7 +10,8 @@
  *   - discoverProfiles()    reads ~/.aws/config
  *   - findCachedToken()     reads ~/.aws/sso/cache/<sha1(session)>.json
  *   - buildLocalProfileStates(): valid (future-dated token) | needs-login (no token)
- *   - readProfileCredentials() reads ~/.aws/credentials (for `c` copy-export)
+ *   - readProfileCredentials() reads ~/.aws/credentials (for `c` copy-export),
+ *     including the `x_security_token_expires` role-credential expiry
  *   - favorites (⟳)         read from ~/.aws/credentials-manager.json
  *
  * Run: bun scripts/demo/fixture.ts   (HOME is set to ./docs/demo/home)
@@ -123,6 +124,9 @@ function buildCredentials(): string {
       `aws_access_key_id = ASIA${p.accountId.slice(0, 4)}DEMOKEY${p.roleName.slice(0, 4).toUpperCase()}`,
       `aws_secret_access_key = wJalrXUtnFEMI/demo/${p.name}/EXAMPLEKEY`,
       `aws_session_token = ${sessionToken(p)}`,
+      // Role credentials live ~1h, independent of the (longer-lived) SSO token,
+      // so the demo shows the two countdowns diverging like they really do.
+      `x_security_token_expires = ${iso(Math.min(s.tokenMinutes, 52) * MIN)}`,
       "",
     );
   }
