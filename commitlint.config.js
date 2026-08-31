@@ -22,6 +22,7 @@ export default {
       1,
       'always',
       [
+        'main', // release-please's own commits: `chore(main): release X.Y.Z`
         'cli',
         'aws',
         'ci',

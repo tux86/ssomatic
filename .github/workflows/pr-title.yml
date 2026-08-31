@@ -14,6 +14,9 @@ jobs:
     steps:
       # Ensures the PR title is a valid Conventional Commit, since squash-merging
       # uses it as the commit message that release-please parses.
+      #
+      # `main` is allowed because release-please titles its own Release PR
+      # `chore(main): release X.Y.Z`, which this check would otherwise reject.
       - uses: amannn/action-semantic-pull-request@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -31,6 +34,7 @@ jobs:
             chore
             revert
           scopes: |
+            main
             cli
             aws
             ci
