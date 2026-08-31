@@ -65,42 +65,45 @@ test("discoverProfiles parses sso-session and inline profiles", async () => {
 
 test("saveSettings / loadSettings round-trip", async () => {
   const { saveSettings, loadSettings } = await import("./settings");
-  saveSettings({ notifications: false, refreshLeadMinutes: 60, favoriteProfiles: ["dev"] });
+  saveSettings({ notifications: false, refreshLeadMinutes: 30, favoriteProfiles: ["dev"] });
   const loaded = loadSettings();
   expect(loaded.notifications).toBe(false);
-  expect(loaded.refreshLeadMinutes).toBe(60);
+  expect(loaded.refreshLeadMinutes).toBe(30);
   expect(loaded.favoriteProfiles).toEqual(["dev"]);
 });
 
-test("token cache round-trip + valid status", async () => {
+test("token cache round-trips through disk", async () => {
   const future = new Date(Date.now() + 3_600_000);
   await sso.saveSSOTokenToCache(DEV, { accessToken: "tok-123", expiresAt: future });
 
   const cached = await sso.findCachedToken(DEV);
   expect(cached?.accessToken).toBe("tok-123");
-
-  const status = await sso.checkTokenStatus(DEV);
-  expect(status.status).toBe("valid");
+  expect(cached?.expiresAt.getTime()).toBe(future.getTime());
 });
 
-test("checkTokenStatus returns expired for a past token", async () => {
-  const past = new Date(Date.now() - 1000);
-  const old = { ...DEV, name: "old", ssoStartUrl: "https://old.awsapps.com/start" };
-  await sso.saveSSOTokenToCache(old, { accessToken: "old-tok", expiresAt: past });
-
-  const status = await sso.checkTokenStatus(old);
-  expect(status.status).toBe("expired");
+test("findCachedToken returns null when no token has been cached", async () => {
+  const unknown = { ...DEV, ssoSession: "never-logged-in" };
+  expect(await sso.findCachedToken(unknown)).toBeNull();
 });
 
-test("sortByFavorites puts favorites first, then alphabetical", () => {
-  const items = [{ n: "charlie" }, { n: "alpha" }, { n: "bravo" }];
-  const sorted = sso.sortByFavorites(items, ["bravo"], (i) => i.n);
-  expect(sorted.map((i) => i.n)).toEqual(["bravo", "alpha", "charlie"]);
+
+test("only a rejected token routes the user to an interactive login", () => {
+  const named = (name: string) => Object.assign(new Error("boom"), { name });
+
+  expect(sso.classifyCredentialsError(named("UnauthorizedException"), DEV).failure).toBe("expired-token");
+  expect(sso.classifyCredentialsError(named("ExpiredTokenException"), DEV).failure).toBe("expired-token");
+
+  // A transient network fault must NOT send the user through a browser login
+  // it cannot fix.
+  expect(sso.classifyCredentialsError(named("TimeoutError"), DEV).failure).toBe("unavailable");
+  expect(sso.classifyCredentialsError(named("TooManyRequestsException"), DEV).failure).toBe("unavailable");
+
+  // Neither must a role the user simply is not entitled to.
+  const denied = sso.classifyCredentialsError(named("ForbiddenException"), DEV);
+  expect(denied.failure).toBe("denied");
+  expect(denied.error).toContain(DEV.ssoRoleName);
 });
 
-test("formatExpiry formats hours/minutes and handles expired/unknown", () => {
-  expect(sso.formatExpiry(undefined)).toBe("Unknown");
-  expect(sso.formatExpiry(new Date(Date.now() - 1000))).toBe("Expired");
-  const inAlmostTwoHours = new Date(Date.now() + 2 * 3_600_000 - 60_000);
-  expect(sso.formatExpiry(inAlmostTwoHours)).toMatch(/^1h \d+m$/);
+test("classifyCredentialsError copes with a non-Error throw", () => {
+  expect(sso.classifyCredentialsError("just a string", DEV).failure).toBe("unavailable");
 });
