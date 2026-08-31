@@ -3,26 +3,26 @@
  * awssesh - Interactive TUI for managing AWS SSO credentials
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Text, useApp, useInput } from "ink";
 import { parseArgs } from "./args.js";
 import { runStatus } from "./commands/status.js";
 import { runExport } from "./commands/export.js";
 import { runRefresh } from "./commands/refresh.js";
-import { App, renderApp, Spinner, StatusMessage, ACTIONS, Key } from "./components/index.js";
-import { useCopy } from "./hooks/index.js";
+import { App, renderApp, Spinner, StatusMessage, ACTIONS } from "./components/index.js";
 import { Dashboard } from "./tui/Dashboard.js";
 import { Details } from "./tui/Details.js";
 import { Settings } from "./tui/Settings.js";
+import { LoginPrompt } from "./tui/LoginPrompt.js";
+import { useDeviceAuth, type LoginResult } from "./tui/useDeviceAuth.js";
 import { useAutoRefresh } from "./tui/useAutoRefresh.js";
+import { useTransientMessage } from "./hooks/useTransientMessage.js";
 import {
   type SSOProfile,
-  type DeviceAuthInfo,
   discoverProfiles,
-  startDeviceAuthorization,
-  performSSOLoginFlow,
   refreshProfile,
   readProfileCredentials,
+  credentialsAreFresh,
   sendNotification,
   openBrowser,
 } from "../aws/sso.js";
@@ -33,173 +33,34 @@ import { VERSION, checkForUpdate } from "../version.js";
 
 type ViewState = "dashboard" | "details" | "settings";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Hook: useDeviceAuth (handles interactive SSO device authorization flow)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface UseDeviceAuthOptions {
-  pendingLogin: SSOProfile | null;
-  onLoginComplete: (profile: SSOProfile, result: { success: boolean; error?: string }) => void;
-  onCopyUrl?: () => void;
-}
-
-function useDeviceAuth({ pendingLogin, onLoginComplete, onCopyUrl }: UseDeviceAuthOptions) {
-  const [deviceAuth, setDeviceAuth] = useState<DeviceAuthInfo | null>(null);
-  const [authorizing, setAuthorizing] = useState(false);
-  const [authError, setAuthError] = useState(false);
-  const { copy, copied } = useCopy();
-  const currentProfileRef = React.useRef<string | null>(null);
-
-  // Reset and start new device authorization when profile changes
-  useEffect(() => {
-    const profileName = pendingLogin?.name ?? null;
-
-    // If profile changed, reset state
-    if (profileName !== currentProfileRef.current) {
-      currentProfileRef.current = profileName;
-      setDeviceAuth(null);
-      setAuthorizing(false);
-      setAuthError(false);
-
-      // Start new device authorization if we have a profile
-      if (pendingLogin) {
-        startDeviceAuthorization(pendingLogin).then((info) => {
-          if (info === null) {
-            setAuthError(true);
-          } else {
-            setDeviceAuth(info);
-          }
-        });
-      }
-    }
-  }, [pendingLogin]);
-
-  // Start polling automatically when deviceAuth is ready
-  useEffect(() => {
-    if (!pendingLogin || !deviceAuth || authorizing) return;
-
-    setAuthorizing(true);
-    performSSOLoginFlow(pendingLogin, deviceAuth).then((result) => {
-      onLoginComplete(pendingLogin, result);
-    });
-  }, [pendingLogin, deviceAuth, authorizing, onLoginComplete]);
-
-  const handleEnter = useCallback(() => {
-    if (!deviceAuth) return;
-    openBrowser(deviceAuth.verificationUri);
-  }, [deviceAuth]);
-
-  const handleCopy = useCallback(() => {
-    if (!deviceAuth) return;
-    copy(deviceAuth.verificationUri);
-    onCopyUrl?.();
-  }, [deviceAuth, copy, onCopyUrl]);
-
-  return {
-    deviceAuth,
-    authorizing,
-    authError,
-    copied,
-    handleEnter,
-    handleCopy,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Login Prompt Component (shown while an interactive device-auth is pending)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface LoginPromptProps {
-  profile: SSOProfile;
-  deviceAuth: DeviceAuthInfo | null;
-  authError?: boolean;
-  copied?: boolean;
-  authorizing?: boolean;
-}
-
-function LoginPrompt({ profile, deviceAuth, authError = false, copied = false, authorizing = false }: LoginPromptProps) {
-  if (authError) {
-    return (
-      <Box marginTop={1} flexDirection="column">
-        <Text color="yellow">SSO login required for {profile.name}</Text>
-        <StatusMessage type="error">
-          Failed to start device authorization. Check your network and SSO configuration.
-        </StatusMessage>
-        <Box marginTop={1}>
-          <Key k="Esc">back</Key>
-        </Box>
-      </Box>
-    );
-  }
-
-  if (!deviceAuth) {
-    return (
-      <Box marginTop={1} flexDirection="column">
-        <Text color="yellow">SSO login required for {profile.name}</Text>
-        <Spinner label="Initializing device authorization..." />
-        <Box marginTop={1}>
-          <Key k="Esc">cancel</Key>
-        </Box>
-      </Box>
-    );
-  }
-
-  return (
-    <Box marginTop={1} flexDirection="column">
-      <Text color="yellow">SSO login required for {profile.name}</Text>
-      <Box marginTop={1} flexDirection="column">
-        <Box>
-          <Text dimColor>URL: </Text>
-          <Text color="cyan">{deviceAuth.verificationUri}</Text>
-          {copied && <Text color="green"> (copied!)</Text>}
-        </Box>
-        <Box>
-          <Text dimColor>Code: </Text>
-          <Text color="magenta" bold>
-            {deviceAuth.userCode}
-          </Text>
-        </Box>
-      </Box>
-      <Box marginTop={1} flexDirection="column">
-        {authorizing && <Spinner label="Waiting for browser authorization..." />}
-        <Box>
-          <Key k="⏎">open browser</Key>
-          <Key k="c">copy URL</Key>
-          <Key k="Esc">cancel</Key>
-        </Box>
-      </Box>
-    </Box>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────────────────────────────────────
+const TITLE = `awssesh v${VERSION}`;
 
 function Awssesh() {
   const { exit } = useApp();
 
   const [view, setView] = useState<ViewState>("dashboard");
   const [detailName, setDetailName] = useState<string | null>(null);
-  const [settings, setSettings] = useState<AppSettings>(loadSettings());
+  const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [ssoProfiles, setSSOProfiles] = useState<SSOProfile[]>([]);
   const [seeding, setSeeding] = useState(true);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
   const [pendingLogin, setPendingLogin] = useState<SSOProfile | null>(null);
 
+  const { message, notify, hold } = useTransientMessage();
+
   // Notify-once on auto-refresh login expiry, respecting the notifications setting.
-  const settingsRef = React.useRef(settings);
+  const settingsRef = useRef(settings);
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
   const onNeedsLogin = useCallback((name: string) => {
     if (settingsRef.current.notifications) {
       void sendNotification("SSO Login Required", `Token expired for profile '${name}'`);
     }
   }, []);
 
-  const { profiles, reload, refreshOne, setAuto } = useAutoRefresh(settings, onNeedsLogin);
+  const { profiles, reload, refreshOne, setFavorite } = useAutoRefresh(settings, onNeedsLogin);
 
   // Seed discovered SSO profiles on mount (the hook seeds the profile states).
   useEffect(() => {
@@ -215,9 +76,14 @@ function Awssesh() {
     };
   }, []);
 
-  // Check for updates.
   useEffect(() => {
-    checkForUpdate().then(setUpdateAvailable);
+    let cancelled = false;
+    void checkForUpdate().then((v) => {
+      if (!cancelled) setUpdateAvailable(v);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const findProfile = useCallback(
@@ -225,123 +91,134 @@ function Awssesh() {
     [ssoProfiles],
   );
 
-  // The profiles displayed in the dashboard come from the in-process hook.
-  const displayProfiles = profiles;
-
   // ── Interactive login ──────────────────────────────────────────────────────
   const handleLoginComplete = useCallback(
-    (_profile: SSOProfile, _result: { success: boolean; error?: string }) => {
+    (profile: SSOProfile, result: LoginResult) => {
       setPendingLogin(null);
+      // The failure reason used to be dropped on the floor, leaving the user
+      // back at the dashboard with no idea why nothing changed.
+      if (result.success) notify(`Signed in to ${profile.name}`, "success");
+      else notify(`${profile.name}: ${result.error ?? "login failed"}`, "error");
       void reload();
     },
-    [reload],
+    [reload, notify],
   );
 
-  const { deviceAuth, authorizing, authError, copied, handleEnter, handleCopy } = useDeviceAuth({
-    pendingLogin,
-    onLoginComplete: handleLoginComplete,
-  });
+  const deviceAuth = useDeviceAuth({ pendingLogin, onLoginComplete: handleLoginComplete });
 
   // Keyboard for the login prompt overlay (only active while a login is pending).
   useInput(
     (input, key) => {
-      if (!pendingLogin) return;
-      if (authError) {
-        if (key.escape) setPendingLogin(null);
+      if (key.escape) {
+        setPendingLogin(null);
+        notify("Login cancelled");
         return;
       }
-      if (key.return) handleEnter();
-      if (input === "c") handleCopy();
-      if (key.escape) setPendingLogin(null);
+      if (deviceAuth.authError) return;
+      if (key.return) deviceAuth.openInBrowser();
+      else if (input === "c") deviceAuth.copyUrl();
     },
     { isActive: !!pendingLogin },
   );
 
-  // ── Dashboard handlers ────────────────────────────────────────────────────
+  // ── Profile actions ───────────────────────────────────────────────────────
   const handleRefresh = useCallback(
-    async (names: string[]) => {
-      const name = names[0];
-      if (!name) return;
-      setFeedback(`Refreshing ${name}…`);
+    async (name: string) => {
+      hold(`Refreshing ${name}…`);
       const result = await refreshOne(name);
       if (result.needsLogin) {
         const profile = findProfile(name);
         if (profile) {
-          setFeedback(`${name} needs login`);
-          setPendingLogin(profile); // login completion will reload state
+          hold(`${name} needs an interactive login`);
+          setPendingLogin(profile); // login completion reloads state
           return;
         }
-        setFeedback(`${name} needs login`);
+        notify(`${name} needs login, but it is no longer in ~/.aws/config`, "error");
         return;
       }
-      if (result.ok) setFeedback(`Refreshed ${name}`);
-      else setFeedback(`${name}: ${result.error ?? "refresh failed"}`);
+      if (result.ok) notify(`Refreshed ${name}`, "success");
+      else notify(`${name}: ${result.error ?? "refresh failed"}`, "error");
     },
-    [refreshOne, findProfile],
+    [refreshOne, findProfile, hold, notify],
   );
 
   const handleToggleAuto = useCallback(
     (name: string) => {
-      const isFav = settings.favoriteProfiles.includes(name);
-      const favoriteProfiles = isFav
-        ? settings.favoriteProfiles.filter((n) => n !== name)
-        : [...settings.favoriteProfiles, name];
-      const next = { ...settings, favoriteProfiles };
+      // `setFavorite` owns persistence, so settings have a single writer.
+      const next = setFavorite(name);
       setSettings(next);
-      setAuto(name, !isFav); // persists settings + reloads the ⟳ marker
-      setFeedback(`⟳ ${isFav ? "off" : "on"} for ${name}`);
+      notify(`⟳ auto-refresh ${next.favoriteProfiles.includes(name) ? "on" : "off"} for ${name}`);
     },
-    [settings, setAuto],
+    [setFavorite, notify],
+  );
+
+  /**
+   * Read credentials that are actually usable, refreshing when the stored ones
+   * are missing, expired, or about to expire.
+   *
+   * Checking only for *presence* meant copying an hour-old, already-dead
+   * session token to the clipboard and reporting success — the profile still
+   * showed "valid" because that reflects the SSO token, which outlives the role
+   * credentials several times over.
+   */
+  const ensureCredentials = useCallback(
+    async (name: string) => {
+      const existing = readProfileCredentials(name);
+      if (credentialsAreFresh(existing)) return existing;
+
+      const profile = findProfile(name);
+      if (!profile) return null;
+      const result = await refreshProfile(profile);
+      if (!result.success) return null;
+
+      const refreshed = readProfileCredentials(name);
+      // A profile whose expiry we still cannot determine (written by another
+      // tool) is better used than refused — it was just re-fetched.
+      return refreshed;
+    },
+    [findProfile],
   );
 
   const handleCopyExport = useCallback(
     async (name: string) => {
-      let creds = readProfileCredentials(name);
+      hold(`Fetching credentials for ${name}…`);
+      const creds = await ensureCredentials(name);
       if (!creds) {
-        const profile = findProfile(name);
-        if (profile) {
-          const result = await refreshProfile(profile);
-          if (result.success) creds = readProfileCredentials(name);
-        }
-      }
-      if (!creds) {
-        setFeedback(`No credentials for ${name}`);
+        notify(`No credentials for ${name} — refresh or log in first`, "error");
         return;
       }
       const ok = await copyToClipboard(buildExportBlock(creds));
-      setFeedback(ok ? `Copied export for ${name}` : `Copy failed for ${name}`);
+      if (ok) notify(`Copied AWS_* export lines for ${name}`, "success");
+      else notify("Copy failed — no clipboard tool available", "error");
     },
-    [findProfile],
+    [ensureCredentials, hold, notify],
   );
 
-  const handleCopyName = useCallback(async (name: string) => {
-    const ok = await copyToClipboard(name);
-    setFeedback(ok ? `Copied ${name}` : `Copy failed for ${name}`);
-  }, []);
+  const handleCopyName = useCallback(
+    async (name: string) => {
+      const ok = await copyToClipboard(name);
+      if (ok) notify(`Copied “${name}”`, "success");
+      else notify("Copy failed — no clipboard tool available", "error");
+    },
+    [notify],
+  );
 
   const handleOpenConsole = useCallback(
     async (name: string) => {
-      let creds = readProfileCredentials(name);
+      hold(`Opening console for ${name}…`);
+      const creds = await ensureCredentials(name);
       if (!creds) {
-        const profile = findProfile(name);
-        if (profile) {
-          const result = await refreshProfile(profile);
-          if (result.success) creds = readProfileCredentials(name);
-        }
-      }
-      if (!creds) {
-        setFeedback(`No credentials for ${name}`);
+        notify(`No credentials for ${name} — refresh or log in first`, "error");
         return;
       }
       try {
-        const url = await getConsoleSigninUrl(creds);
-        openBrowser(url);
-        setFeedback(`Opening console for ${name}`);
+        openBrowser(await getConsoleSigninUrl(creds));
+        notify(`Opened the AWS console for ${name}`, "success");
       } catch {
-        setFeedback(`Console sign-in failed for ${name}`);
+        notify(`Console sign-in failed for ${name}`, "error");
       }
     },
-    [findProfile],
+    [ensureCredentials, hold, notify],
   );
 
   const handleOpenDetails = useCallback((name: string) => {
@@ -349,41 +226,36 @@ function Awssesh() {
     setView("details");
   }, []);
 
-  const handleOpenSettings = useCallback(() => {
-    setView("settings");
-  }, []);
-
   const handleSettingsChange = useCallback((next: AppSettings) => {
     setSettings(next);
     saveSettings(next);
   }, []);
 
-  const statusItems = useMemo(
-    () =>
-      [
-        ...(updateAvailable
-          ? [
-              <Text key="update" color="yellow">
-                ↑ v{updateAvailable} available
-              </Text>,
-            ]
-          : []),
-        ...(feedback
-          ? [
-              <Text key="feedback" color="green">
-                {feedback}
-              </Text>,
-            ]
-          : []),
-      ] as React.ReactNode[],
-    [updateAvailable, feedback],
-  );
+  const statusItems = useMemo(() => {
+    const items: React.ReactNode[] = [];
+    if (updateAvailable) {
+      items.push(
+        <Text key="update" color="yellow">
+          {`↑ v${updateAvailable} available — npx awssesh@latest`}
+        </Text>,
+      );
+    }
+    if (message) {
+      const color = message.tone === "error" ? "red" : message.tone === "success" ? "green" : "cyan";
+      items.push(
+        <Text key="message" color={color}>
+          {message.text}
+        </Text>,
+      );
+    }
+    return items;
+  }, [updateAvailable, message]);
 
   // Loading / seeding state.
   if (seeding && profiles.length === 0) {
     return (
-      <App title={`awssesh v${VERSION}`} icon="🔐" color="cyan" actions={[ACTIONS.quit]} captureQuit onQuit={() => exit()}>
-        <Spinner label="Discovering SSO profiles..." />
+      <App title={TITLE} actions={[ACTIONS.quit]} captureQuit onQuit={exit}>
+        <Spinner label="Discovering SSO profiles…" />
       </App>
     );
   }
@@ -391,8 +263,9 @@ function Awssesh() {
   // No profiles found.
   if (!seeding && ssoProfiles.length === 0 && profiles.length === 0) {
     return (
-      <App title={`awssesh v${VERSION}`} icon="🔐" color="cyan" actions={[ACTIONS.quit]} captureQuit onQuit={() => exit()}>
+      <App title={TITLE} actions={[ACTIONS.quit]} captureQuit onQuit={exit}>
         <StatusMessage type="error">No SSO profiles found in ~/.aws/config</StatusMessage>
+        <Text dimColor>Add a profile with `aws configure sso`, then restart awssesh.</Text>
       </App>
     );
   }
@@ -400,13 +273,14 @@ function Awssesh() {
   // Login overlay takes precedence over the active view.
   if (pendingLogin) {
     return (
-      <App title={`awssesh v${VERSION}`} icon="🔐" color="cyan" onQuit={() => exit()}>
+      <App title={TITLE} statusItems={statusItems} onQuit={exit}>
         <LoginPrompt
           profile={pendingLogin}
-          deviceAuth={deviceAuth}
-          authError={authError}
-          copied={copied}
-          authorizing={authorizing}
+          deviceAuth={deviceAuth.deviceAuth}
+          authError={deviceAuth.authError}
+          copied={deviceAuth.copied}
+          copyFailed={deviceAuth.copyFailed}
+          authorizing={deviceAuth.authorizing}
         />
       </App>
     );
@@ -414,48 +288,45 @@ function Awssesh() {
 
   if (view === "settings") {
     return (
-      <App title={`awssesh v${VERSION}`} icon="🔐" color="cyan" statusItems={statusItems} onQuit={() => exit()}>
+      <App title={TITLE} statusItems={statusItems} onQuit={exit}>
         <Settings settings={settings} onChange={handleSettingsChange} onBack={() => setView("dashboard")} />
       </App>
     );
   }
 
-  if (view === "details" && detailName) {
-    const profile = displayProfiles.find((p) => p.name === detailName);
-    if (profile) {
-      const sso = findProfile(detailName);
-      return (
-        <App title={`awssesh v${VERSION}`} icon="🔐" color="cyan" statusItems={statusItems} onQuit={() => exit()}>
-          <Details
-            profile={profile}
-            arn={sso?.ssoRoleName}
-            region={sso?.ssoRegion}
-            startUrl={sso?.ssoStartUrl}
-            onBack={() => setView("dashboard")}
-          />
-        </App>
-      );
-    }
+  const detail = view === "details" && detailName ? profiles.find((p) => p.name === detailName) : undefined;
+  if (detail) {
+    const sso = findProfile(detail.name);
+    return (
+      <App title={TITLE} statusItems={statusItems} onQuit={exit}>
+        <Details
+          profile={detail}
+          roleName={sso?.ssoRoleName}
+          region={sso?.region ?? sso?.ssoRegion}
+          startUrl={sso?.ssoStartUrl}
+          onBack={() => setView("dashboard")}
+          onRefresh={(name) => void handleRefresh(name)}
+          onCopyExport={(name) => void handleCopyExport(name)}
+          onCopyName={(name) => void handleCopyName(name)}
+          onOpenConsole={(name) => void handleOpenConsole(name)}
+          onToggleAuto={handleToggleAuto}
+        />
+      </App>
+    );
   }
 
   return (
-    <App
-      title={`awssesh v${VERSION}`}
-      icon="🔐"
-      color="cyan"
-      statusItems={statusItems}
-      onQuit={() => exit()}
-    >
+    <App title={TITLE} statusItems={statusItems} onQuit={exit}>
       <Dashboard
-        profiles={displayProfiles}
-        onRefresh={(names) => void handleRefresh(names)}
+        profiles={profiles}
+        onRefresh={(name) => void handleRefresh(name)}
         onToggleAuto={handleToggleAuto}
         onOpenDetails={handleOpenDetails}
         onOpenConsole={(name) => void handleOpenConsole(name)}
         onCopyExport={(name) => void handleCopyExport(name)}
         onCopyName={(name) => void handleCopyName(name)}
-        onOpenSettings={handleOpenSettings}
-        onQuit={() => exit()}
+        onOpenSettings={() => setView("settings")}
+        onQuit={exit}
       />
     </App>
   );
@@ -468,11 +339,20 @@ function Awssesh() {
 const HELP = `awssesh — interactive AWS SSO credential manager
 
 Usage:
-  awssesh                 launch the interactive TUI
-  awssesh status          print profile statuses and exit
-  awssesh refresh [name]  refresh a profile (or all favorites) now
-  awssesh export <name>   print export AWS_* lines for eval $(...)
-  awssesh --version
+  awssesh                    launch the interactive TUI
+  awssesh status             print profile statuses and exit
+  awssesh refresh [profile]  refresh a profile (or all ⟳ profiles) now
+  awssesh export <profile>   print export AWS_* lines for eval $(...)
+  awssesh --version          print the version
+  awssesh --help             show this message
+
+Examples:
+  eval $(awssesh export prod)
+  awssesh refresh prod
+
+Environment:
+  AWSSESH_NO_UPDATE_CHECK    skip the release check on startup
+  AWSSESH_NO_HYPERLINKS      render URLs as plain text
 `;
 
 async function launchTui(): Promise<void> {
@@ -503,6 +383,7 @@ async function main(): Promise<void> {
       return;
     case "error":
       process.stderr.write(parsed.message + "\n");
+      process.stderr.write("\n" + HELP);
       process.exit(1);
       return;
     case "tui":
