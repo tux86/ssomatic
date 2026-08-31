@@ -4,7 +4,7 @@
 
 **awssesh** — Interactive AWS SSO credential manager — a terminal CLI built with Bun + React + Ink.
 
-Distributed via npm (`npx awssesh`). Settings (favorites, notifications, refresh interval) are persisted across sessions.
+Distributed via npm (`npx awssesh@latest` / `bunx awssesh@latest` — the `@latest` tag matters because `bunx` caches resolved packages and a bare `bunx awssesh` will keep running a stale one). Settings (favorites, notifications, refresh interval) are persisted across sessions.
 
 awssesh is a single-process TUI. While open it auto-refreshes the ⟳ (pinned) profiles' role credentials in an expiry-aware manner, and sends a desktop notification when an interactive SSO browser login is needed. No background process — quitting fully exits.
 
