@@ -15,23 +15,6 @@ export default [
         sourceType: "module",
         ecmaFeatures: { jsx: true },
       },
-      globals: {
-        Bun: "readonly",
-        process: "readonly",
-        console: "readonly",
-        setTimeout: "readonly",
-        setInterval: "readonly",
-        clearInterval: "readonly",
-        clearTimeout: "readonly",
-        Promise: "readonly",
-        Map: "readonly",
-        Set: "readonly",
-        Date: "readonly",
-        URL: "readonly",
-        URLSearchParams: "readonly",
-        Response: "readonly",
-        fetch: "readonly",
-      },
     },
     plugins: {
       "@typescript-eslint": tseslint,
@@ -46,8 +29,13 @@ export default [
       "react/prop-types": "off",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
-      // Deferred: setState-in-effect patterns in List.tsx, MultiSelectList.tsx, and index.tsx
-      // will be refactored in a later task (v2 component rewrite).
+      // `no-undef` cannot see TypeScript's ambient declarations, so it flagged
+      // every DOM/Node global (Buffer, AbortSignal, the NodeJS namespace) and was
+      // being appeased with a hand-maintained allowlist that kept going stale.
+      // `tsc --noEmit` already catches genuinely undefined identifiers.
+      "no-undef": "off",
+      // Dashboard clamps its cursor from an effect when the filtered list shrinks;
+      // deriving it during render instead would lose the user's position.
       "react-hooks/set-state-in-effect": "off",
     },
     settings: {
