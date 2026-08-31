@@ -15,6 +15,38 @@ replaced by npm (npx awssesh / npm i -g awssesh).
 * **cli:** remove web UI layer and toolchain ([d6f3f53](https://github.com/tux86/awssesh/commit/d6f3f53eb374f656bf2e3d8b11b55117eaa86bdb))
 * drop dead web eslint block, fix CONTRIBUTING, harden ~/.aws writes ([b15cb3c](https://github.com/tux86/awssesh/commit/b15cb3c01dc8de09f6dc9ae591d465af0101dcdf))
 
+## [2.1.0](https://github.com/tux86/awssesh/compare/v2.0.0...v2.1.0) (2026-08-31)
+
+
+### ⚠ Upgrade note
+
+Credentials written by 2.0.0 are quoted in a way the AWS CLI cannot parse. Run
+`awssesh refresh <profile>` (or let ⟳ auto-refresh run) once after upgrading to
+rewrite `~/.aws/credentials` correctly.
+
+### Bug Fixes
+
+* **aws:** write credentials the AWS CLI can actually read. Session tokens end in base64 `==` padding, and the `ini` serialiser quoted any value containing `=`. The AWS parsers take everything after the first `=` verbatim, so the token reached AWS with literal `"` characters and every signed request failed to sign ([#18](https://github.com/tux86/awssesh/issues/18))
+* **aws:** chmod `~/.aws/credentials` to 0600 on every write; live session credentials were left at the default umask ([#18](https://github.com/tux86/awssesh/issues/18))
+* **aws:** only route the user to a browser login when the token is genuinely rejected — a network blip or a missing role grant used to report "needs login" ([#18](https://github.com/tux86/awssesh/issues/18))
+* **cli:** keep the SSO device URL clickable when it wraps, via an OSC 8 hyperlink; a wrapped URL previously opened only its first fragment ([#18](https://github.com/tux86/awssesh/issues/18))
+* **cli:** stop `c` / `o` handing out expired credentials while reporting success ([#18](https://github.com/tux86/awssesh/issues/18))
+* **cli:** fix a hang when cancelling a login and immediately retrying the same profile ([#18](https://github.com/tux86/awssesh/issues/18))
+* **cli:** stop the expiry countdown jumping to the SSO token's value after every refresh ([#18](https://github.com/tux86/awssesh/issues/18))
+* **cli:** support Wayland, WSL and SSH clipboards (`wl-copy`, `xsel`, `clip.exe`, OSC 52); only `xclip` was tried before ([#18](https://github.com/tux86/awssesh/issues/18))
+* **cli:** stop advertising a phantom update that downgrades, and add `AWSSESH_NO_UPDATE_CHECK` ([#18](https://github.com/tux86/awssesh/issues/18))
+* **cli:** expire status messages, clamp `refreshLeadMinutes`, and surface login failure reasons ([#18](https://github.com/tux86/awssesh/issues/18))
+
+### Features
+
+* **cli:** redesign the dashboard and fix credential-file corruption ([#18](https://github.com/tux86/awssesh/issues/18)) ([e0dbfe0](https://github.com/tux86/awssesh/commit/e0dbfe02e6de497c38de652e1cb5657d92af0e9f))
+* **cli:** responsive layout (46–104 columns) with a scrolling viewport, live-ticking countdowns, a `?` help overlay, `g`/`G` and PageUp/PageDown ([#18](https://github.com/tux86/awssesh/issues/18))
+* **cli:** show role-credential and SSO-token expiry separately in the details view ([#18](https://github.com/tux86/awssesh/issues/18))
+
+### Build System
+
+* require Bun >= 1.4, update all dependencies, drop `@aws-sdk/client-sts` ([#18](https://github.com/tux86/awssesh/issues/18))
+
 ## [2.0.0](https://github.com/tux86/awssesh/compare/v1.4.0...v2.0.0) (2026-06-12)
 
 
