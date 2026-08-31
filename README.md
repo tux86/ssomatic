@@ -32,12 +32,16 @@ Keep your AWS SSO credentials fresh — automatically. A fast terminal dashboard
 
 ```bash
 # Run without installing
-npx awssesh
-bunx awssesh
+npx awssesh@latest
+bunx awssesh@latest
 
 # Or install globally
 npm install -g awssesh
 ```
+
+> Use the `@latest` tag. `bunx` caches resolved packages in `~/.bun/install/cache`,
+> so a bare `bunx awssesh` keeps running whatever version it cached first. If you
+> are already stuck on an old one, `bun pm cache rm` clears it.
 
 ---
 
