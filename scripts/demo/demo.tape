@@ -15,8 +15,8 @@ Output docs/screenshots/cli-demo.gif
 
 Set Shell "zsh"
 Set FontSize 22
-Set Width 1040
-Set Height 760
+Set Width 1280
+Set Height 800
 Set Padding 20
 
 # ── Off-camera setup: mock sandbox HOME, demo stubs, offline update check, and
@@ -61,14 +61,14 @@ Sleep 300ms
 Up
 Sleep 600ms
 
-# ── Filter, then clear it (Esc keeps the query, so backspace it out) ──────────
+# ── Filter: apply it, show the "2/6 shown" indicator, then Esc clears it ─────
 Type "/"
 Sleep 400ms
 Type "prod"
 Sleep 1300ms
-Backspace 4
-Sleep 400ms
 Enter
+Sleep 1400ms
+Escape
 Sleep 700ms
 
 # ── Copy env export, then copy the profile name (status feedback) ────────────
@@ -80,6 +80,12 @@ Sleep 1400ms
 # ── Open details, back out ───────────────────────────────────────────────────
 Enter
 Sleep 2200ms
+Escape
+Sleep 700ms
+
+# ── Keyboard help overlay ────────────────────────────────────────────────────
+Type "?"
+Sleep 2400ms
 Escape
 Sleep 700ms
 

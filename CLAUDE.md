@@ -13,39 +13,44 @@ awssesh is a single-process TUI. While open it auto-refreshes the ⟳ (pinned) p
 ```
 awssesh/
 ├── src/
+│   ├── version.ts             # VERSION + semver-aware update check
 │   ├── aws/                   # Shared AWS logic (UI-agnostic)
 │   │   ├── sso.ts             # SSO profiles, tokens, refresh
-│   │   ├── sso.test.ts
-│   │   ├── settings.ts        # Persistent settings (favorites, notifications, interval)
-│   │   ├── settings.test.ts
+│   │   ├── credentialsFile.ts # AWS-compatible ~/.aws/credentials read/write
+│   │   ├── settings.ts        # Persistent settings (favorites, notifications, lead)
 │   │   ├── console.ts         # AWS console URL builders
-│   │   ├── console.test.ts
+│   │   ├── duration.ts        # Shared relative-time formatting
 │   │   ├── profileState.ts    # ProfileState types + local-state builder
 │   │   ├── refreshScheduler.ts # Expiry-aware refresh decision (decideAction)
-│   │   ├── aws.ts             # STS identity utilities
-│   │   ├── utils.ts           # Clipboard, JSON formatting
-│   │   └── utils.test.ts
+│   │   └── utils.ts           # Clipboard (multi-tool + OSC 52)
 │   └── cli/                   # Terminal UI (React/Ink)
 │       ├── index.tsx          # Entry point + argument router
 │       ├── args.ts            # CLI argument parsing
-│       ├── args.test.ts
 │       ├── commands/          # Non-TUI subcommands
 │       │   ├── status.ts      # `awssesh status`
-│       │   ├── status.test.ts
 │       │   ├── export.ts      # `awssesh export <profile>`
 │       │   └── refresh.ts     # `awssesh refresh [profile]`
 │       ├── tui/               # TUI screens
 │       │   ├── Dashboard.tsx  # Main profile list view
 │       │   ├── Details.tsx    # Profile detail view
 │       │   ├── Settings.tsx   # Settings screen
+│       │   ├── LoginPrompt.tsx # SSO device-authorization screen
+│       │   ├── columns.ts     # Responsive table layout + viewport maths
+│       │   ├── useDeviceAuth.ts  # Hook: one device-auth flow at a time
 │       │   └── useAutoRefresh.ts # Hook: in-process auto-refresh for ⟳ profiles
 │       ├── components/        # Shared Ink UI components
-│       │   ├── App.tsx        # Root container
+│       │   ├── App.tsx        # Root container + responsive width
 │       │   ├── ActionBar.tsx  # Bottom action bar + ACTIONS constant
+│       │   ├── KeyHint.tsx    # Key / KeyBar shortcut hints
+│       │   ├── Link.tsx       # OSC 8 clickable URLs
+│       │   ├── Wordmark.tsx
 │       │   ├── Spinner.tsx
 │       │   └── StatusMessage.tsx
 │       └── hooks/             # Shared hooks
-│           └── useCopy.tsx    # Clipboard copy with feedback
+│           ├── useCopy.tsx    # Clipboard copy with feedback
+│           ├── useNow.ts      # Ticking clock for live countdowns
+│           ├── useTerminalSize.ts    # Terminal dimensions + resize
+│           └── useTransientMessage.ts # Self-expiring status messages
 ├── dist/                      # Build output
 │   └── cli.js                 # Node CLI bundle (npm bin)
 ├── docs/screenshots/          # Demo GIFs for README
@@ -58,8 +63,8 @@ awssesh/
 
 | Tool | Purpose |
 |------|---------|
-| Bun | Runtime & package manager |
-| TypeScript | Language |
+| Bun | Runtime & package manager (>= 1.4) |
+| TypeScript | Language (pinned to 6.x — typescript-eslint does not support TS 7 yet) |
 | React | Component framework |
 | Ink | React renderer for CLI |
 | ESLint | Linting (flat config) |
@@ -76,6 +81,7 @@ bun run dev           # Run CLI with --watch (auto-restart on changes)
 bun run build         # Build the Node CLI bundle (`dist/cli.js`)
 bun run lint          # Run ESLint
 bun test              # Run unit tests
+bun run typecheck     # Typecheck
 ```
 
 ### Runtime CLI subcommands
@@ -86,7 +92,16 @@ awssesh status                 # Print profile statuses and exit
 awssesh refresh [profile]      # Refresh a profile (or all favorites) now
 awssesh export <profile>       # Print export AWS_* lines (use with eval $(awssesh export <profile>))
 awssesh --version
+awssesh --help
 ```
+
+### Environment variables
+
+| Variable | Effect |
+|----------|--------|
+| `AWSSESH_NO_UPDATE_CHECK` | Skip the GitHub release check on startup |
+| `AWSSESH_NO_HYPERLINKS` | Render URLs as plain text instead of OSC 8 links |
+| `AWSSESH_DEMO` | Stub the interactive SSO network calls (used by the demo recording) |
 
 ## Keyboard Shortcuts (Dashboard)
 
@@ -100,8 +115,10 @@ awssesh --version
 | `y` | Copy profile name |
 | `o` | Open AWS console |
 | `/` | Filter profiles |
+| `g` / `G` | Jump to first / last profile |
 | `s` | Open settings |
-| `Esc` | Back |
+| `?` | Keyboard shortcut help |
+| `Esc` | Back, or clear an active filter |
 | `q` | Quit |
 
 ## Commits & Releases

@@ -4,7 +4,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) >= 1.0.0
+- [Bun](https://bun.sh) >= 1.4.0
 - AWS CLI configured with SSO profiles (for testing)
 - Git
 
@@ -63,7 +63,7 @@ Releases are automated via [release-please](https://github.com/googleapis/releas
 
 1. Fork the repo and create a branch from `main`
 2. Make your changes with conventional commits
-3. Ensure `bun run lint` and `bun test` pass
+3. Ensure `bun run lint`, `bun run typecheck` and `bun test` pass
 4. Open a PR using the provided template
 
 ## Code Style
